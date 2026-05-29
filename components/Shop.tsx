@@ -16,7 +16,7 @@ const rewards: Reward[] = [
   {
     id: 1,
     name: "Coffee",
-    cost: 50,
+    cost: 5,
   },
   {
     id: 2,

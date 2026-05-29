@@ -1,69 +1,93 @@
-import React, { useState } from "react";
-import {
-  SafeAreaView,
-  View,
-  TouchableOpacity,
-  Text,
-  StyleSheet,
-} from "react-native";
+import React, { useEffect, useState } from "react";
+import { View, TouchableOpacity, Text, StyleSheet } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import Dashboard from "./components/Dashboard";
 import Tasks from "./components/Tasks";
 import Shop from "./components/Shop";
 import Profile from "./components/Profile";
 
+import { initializeDatabase } from "./database/db";
+
+import {
+  createDefaultTasks,
+  getTasks,
+  toggleTask as dbToggleTask,
+  Task,
+} from "./database/taskQueries";
+
+import { getUserStats, addXP, updateUserStats } from "./database/userQueries";
+
 export default function App() {
   const [screen, setScreen] = useState("dashboard");
 
   const [xp, setXp] = useState(0);
 
-  const [tasks, setTasks] = useState([
-    {
-      id: 1,
-      title: "Workout",
-      completed: false,
-      xpReward: 20,
-    },
-    {
-      id: 2,
-      title: "Read 10 Pages",
-      completed: false,
-      xpReward: 15,
-    },
-    {
-      id: 3,
-      title: "Drink Water",
-      completed: false,
-      xpReward: 10,
-    },
-  ]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+
+  useEffect(() => {
+    initializeDatabase();
+
+    createDefaultTasks();
+
+    const loadedTasks = getTasks();
+    setTasks(loadedTasks);
+
+    const user = getUserStats();
+
+    if (user) {
+      setXp(user.xp);
+    }
+  }, []);
 
   const toggleTask = (id: number) => {
-    setTasks((prev) =>
-      prev.map((task) => {
-        if (task.id === id) {
-          if (!task.completed) {
-            setXp((current) => current + task.xpReward);
-          }
+    const task = tasks.find((t) => t.id === id);
 
-          return {
-            ...task,
-            completed: !task.completed,
-          };
-        }
+    if (!task) return;
 
-        return task;
-      }),
-    );
-  };
+    dbToggleTask(id);
 
-  const buyReward = (cost: number) => {
-    if (xp >= cost) {
-      setXp((prev) => prev - cost);
+    if (!task.completed) {
+      addXP(task.xpReward);
+    } else {
+      const user = getUserStats();
+
+      if (user) {
+        const newXp = Math.max(0, user.xp - task.xpReward);
+
+        const newLevel = Math.floor(newXp / 100) + 1;
+
+        updateUserStats(newXp, newLevel);
+      }
+    }
+
+    const updatedTasks = getTasks();
+    setTasks(updatedTasks);
+
+    const updatedUser = getUserStats();
+
+    if (updatedUser) {
+      setXp(updatedUser.xp);
     }
   };
 
-  const tasksCompleted = tasks.filter((task) => task.completed).length;
+  const buyReward = (cost: number) => {
+    const user = getUserStats();
+
+    if (!user) return;
+
+    if (user.xp >= cost) {
+      const newXp = user.xp - cost;
+
+      const newLevel = Math.floor(newXp / 100) + 1;
+
+      updateUserStats(newXp, newLevel);
+
+      setXp(newXp);
+    }
+  };
+
+  const tasksCompleted = tasks.filter((task) => task.completed === 1).length;
 
   const level = Math.floor(xp / 100) + 1;
 
@@ -79,7 +103,15 @@ export default function App() {
           />
         )}
 
-        {screen === "tasks" && <Tasks tasks={tasks} toggleTask={toggleTask} />}
+        {screen === "tasks" && (
+          <Tasks
+            tasks={tasks.map((task) => ({
+              ...task,
+              completed: task.completed === 1,
+            }))}
+            toggleTask={toggleTask}
+          />
+        )}
 
         {screen === "shop" && <Shop xp={xp} buyReward={buyReward} />}
 
@@ -121,8 +153,10 @@ const styles = StyleSheet.create({
   navbar: {
     flexDirection: "row",
     justifyContent: "space-around",
-    padding: 20,
+    alignItems: "center",
+    paddingVertical: 16,
     borderTopWidth: 1,
-    borderColor: "#ddd",
+    borderTopColor: "#ddd",
+    backgroundColor: "#f5f5f5",
   },
 });
